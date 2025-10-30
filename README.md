@@ -43,6 +43,8 @@ A robust Node.js WebSocket server providing an interactive terminal experience, 
 -   **PostgreSQL**: Relational database for session and command history.
 -   **TypeScript**: Statically typed superset of JavaScript.
 -   **dotenv**: Loads environment variables from a `.env` file.
+-   **jsonwebtoken**: (Dependency, but authentication is currently removed and not actively used).
+-   **node-fetch**: (Dependency, currently unused in the server logic).
 
 ## Prerequisites
 
@@ -72,7 +74,7 @@ Before you begin, ensure you have the following installed:
 Create a `.env` file in the project root based on the `.env.example` (or the default values implied by `src/config.ts`):
 
 ```env
-PORT=3003
+PORT=3000
 # JWT_SECRET is present in .env but currently unused as authentication is removed.
 JWT_SECRET=YOUR_RANDOM_SECRET_KEY
 
@@ -190,7 +192,7 @@ Contributions are welcome! Please feel free to open issues or submit pull reques
 
 ## License
 
-This project is licensed under the ISC License. See the `LICENSE` file for details.
+This project is licensed under the MIT License. See the `LICENSE` file for details.
 
 ## 📧 Contact
 

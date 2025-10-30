@@ -77,7 +77,7 @@ terminalNamespace.on('connection', async (client: Socket) => { // Listen for con
       initialCwd = resolvedRequestedCwd;
       logger.debug(`Client ${clientId} connected with requested CWD: ${initialCwd}`);
     } else {
-      logger.warn(`Client ${clientId} requested invalid CWD: "${requestedCwdFromQuery}". Falling back to default.`);
+      logger.warn(`Client ${clientId} requested invalid CWD: \"${requestedCwdFromQuery}\". Falling back to default.`);
       initialCwd = existsSync(BASE_DIR) && statSync(BASE_DIR).isDirectory() ? BASE_DIR : os.homedir();
     }
   } else {
