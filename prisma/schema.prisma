@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+// User model for referencing session and command creators
+// The 'id' here is expected to be the 'sub' (user ID) from the JWT.
+model User {
+  id               String             @id // This ID will be the 'sub' from JWT
+  username         String             @unique
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  terminalSessions TerminalSession[]
+  commandHistories CommandHistory[]
+}
+// Represents a long-running terminal session (PTY or SSH)
+model TerminalSession {
+  id                String             @id @default(cuid())
+  name              String?
+  createdById       String // User who initiated the session
+  createdBy         User               @relation(fields: [createdById], references: [id])
+  ipAddress         String?
+  userAgent         String?
+  clientInfo        Json? // Store connectionId, cwd, etc. as JSON
+  status            String             @default("ACTIVE") // e.g., ACTIVE, ENDED, ERROR
+  createdAt         DateTime           @default(now())
+  endedAt           DateTime?
+  commandHistories  CommandHistory[]
+}
+// Stores individual commands executed within a terminal session
+model CommandHistory {
+  id                  String             @id @default(cuid())
+  terminalSessionId   String
+  terminalSession     TerminalSession    @relation(fields: [terminalSessionId], references: [id])
+  createdById         String // User who executed the command
+  createdBy           User               @relation(fields: [createdById], references: [id])
+  command             String
+  workingDirectory    String?
+  status              String? // e.g., EXECUTED, FAILED, SUCCESS
+  exitCode            Int?
+  output              String?
+  errorOutput         String?
+  durationMs          Int?
+  shellType           String? // e.g., bash, powershell.exe
+  executedAt          DateTime           @default(now())
+}
