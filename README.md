@@ -191,3 +191,9 @@ Contributions are welcome! Please feel free to open issues or submit pull reques
 ## License
 
 This project is licensed under the ISC License. See the `LICENSE` file for details.
+
+## 📧 Contact
+
+Eddie Villanueva - [evillan0315@gmail.com](mailto:evillan0315@gmail.com)
+[LinkedIn](https://www.linkedin.com/in/eddie-villalon/)  
+[GitHub](https://github.com/evillan0315)  
