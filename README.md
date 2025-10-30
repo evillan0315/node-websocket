@@ -3,6 +3,7 @@
 A robust Node.js WebSocket server providing an interactive terminal experience, including local shell access, SSH connectivity, and command history logging. It's built for seamless integration with a web-based client application.
 
 ## Table of Contents
+- [Repository](#repository)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Prerequisites](#prerequisites)
@@ -16,6 +17,9 @@ A robust Node.js WebSocket server providing an interactive terminal experience, 
 - [Project Structure](#project-structure)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Repository
+- [GitHub](https://github.com/evillan0315/node-websocket)
 
 ## Features
 
@@ -52,7 +56,7 @@ Before you begin, ensure you have the following installed:
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository-url>
+    git clone https://github.com/evillan0315/node-websocket
     cd node-websocket
     ```
 

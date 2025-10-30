@@ -17,8 +17,8 @@
     "terminal",
     "ssh"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Eddie Villanueva <evillan0315@gmail.com>",
+  "license": "MIT",
   "dependencies": {
     "@prisma/client": "^5",
     "dotenv": "^16",
@@ -38,8 +38,5 @@
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.5.3"
   },
-  "main": "src/index.ts",
-  "repository": "git@github.com:evillan0315/node-websocket.git",
-  "author": "Eddie Villanueva <evillan0315@gmail.com>",
-  "license": "MIT"
+  "repository": "git@github.com:evillan0315/node-websocket.git"
 }
