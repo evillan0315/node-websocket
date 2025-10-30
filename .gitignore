@@ -1,3 +1,33 @@
-node_modules
-# Keep environment variables out of version control
+# Node.js
+node_modules/
+dist/
+
+# Environment variables
 .env
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Prisma
+# Ignore prisma client if it's not committed, but usually it's generated into node_modules
+# or a specific 'src/generated' directory which should be ignored if not committed.
+# For this project, it's typically in node_modules/.prisma/client, which is covered by node_modules/
+prisma/dev.db # SQLite development database
+
+# OS
+.DS_Store
+
+# VSCode
+.vscode/
+
+# Other
+coverage/
