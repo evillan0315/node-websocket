@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-websocket-deployment
+  labels:
+    app: node-websocket
+spec:
+  replicas: 1 # Start with 1 replica due to in-memory session management; scaling requires externalizing state.
+  selector:
+    matchLabels:
+      app: node-websocket
+  template:
+    metadata:
+      labels:
+        app: node-websocket
+    spec:
+      # Init container to run Prisma migrations before the main application starts.
+      # It uses the 'builder' image (which includes Prisma CLI and the schema).
+      initContainers:
+        - name: prisma-migrate
+          image: node-websocket-builder:latest # Ensure this image is built and pushed
+          command: ["/bin/sh", "-c"]
+          args:
+            - "echo 'Applying Prisma migrations...';"
+            - "npx prisma migrate deploy --preview-feature --schema=/app/prisma/schema.prisma;"
+            - "echo 'Prisma migrations applied successfully!';"
+          envFrom:
+            - secretRef:
+                name: node-websocket-secret # Get DATABASE_URL from the secret
+          # Resources for the init container can be adjusted if migrations are resource-intensive
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+      containers:
+        - name: node-websocket
+          image: node-websocket:latest # Ensure this image (the 'runner' stage) is built and pushed
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: PORT
+              value: "3000"
+            - name: BASE_DIR
+              value: "/app" # Set the base directory for terminal sessions inside the container
+            - name: SHELL_DEFAULT
+              value: "bash" # Default shell, 'bash' for Linux container
+          envFrom:
+            - secretRef:
+                name: node-websocket-secret # Get DATABASE_URL from the secret
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          # Liveness and Readiness Probes to ensure application health
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3

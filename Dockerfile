@@ -5,9 +5,13 @@
 ##
 
 # --- Builder Stage (for building app and migrations) ---
-FROM node:22-slim AS builder
+FROM node:22 AS builder
 
 WORKDIR /app
+
+# Install build dependencies required for native modules (like node-pty)
+# python3 and build-essential are needed by node-gyp
+RUN apt-get update && apt-get install -y python3 build-essential && rm -rf /var/lib/apt/lists/*
 
 # Copy package.json and package-lock.json for dependency installation
 # Use COPY with wildcard to handle both package.json and package-lock.json/yarn.lock/pnpm-lock.yaml
@@ -29,7 +33,7 @@ COPY src ./src/
 RUN npm run build
 
 # --- Production Runner Stage (lean image for runtime) ---
-FROM node:22-slim AS runner
+FROM node:22 AS runner
 
 WORKDIR /app
 

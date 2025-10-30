@@ -11,6 +11,8 @@ A robust Node.js WebSocket server providing an interactive terminal experience, 
 - [Configuration](#configuration)
 - [Database Setup](#database-setup)
 - [Running the Server](#running-the-server)
+- [Dockerization](#dockerization)
+- [Kubernetes Deployment](#kubernetes-deployment)
 - [API Endpoints](#api-endpoints)
   - [WebSocket Namespace: `/terminal`](#websocket-namespace-terminal)
   - [REST API Endpoints](#rest-api-endpoints)
@@ -53,6 +55,8 @@ Before you begin, ensure you have the following installed:
 -   [Node.js](https://nodejs.org/en/) (v22 or higher)
 -   [npm](https://www.npmjs.com/) (usually comes with Node.js) or [Yarn](https://yarnpkg.com/)
 -   [PostgreSQL](https://www.postgresql.org/) database server
+-   [Docker](https://www.docker.com/get-started) (for Dockerization and Kubernetes)
+-   [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) (for Kubernetes deployment)
 
 ## Installation
 
@@ -118,6 +122,102 @@ npm run build
 npm start
 ```
 
+## Dockerization
+
+The project uses a multi-stage `Dockerfile` to create optimized Docker images. This approach separates the build environment (which includes development dependencies like TypeScript and Prisma CLI) from the runtime environment (which only contains production dependencies and the compiled application).
+
+### Dockerfile Stages
+-   **`builder`**: This stage compiles the TypeScript code, generates the Prisma client, and installs all `devDependencies`. This image can be used as an `initContainer` in Kubernetes for running database migrations.
+-   **`runner`**: This is the final production image. It copies the built artifacts from the `builder` stage and installs only `production` dependencies, resulting in a smaller and more secure image.
+
+### Build Docker Images
+To build both the builder and the final application image, navigate to the project root and run:
+
+```bash
+# Build the 'builder' image (used for migrations in Kubernetes initContainer)
+docker build -t node-websocket-builder:latest . --target builder
+
+# Build the 'runner' image (the main application image)
+docker build -t node-websocket:latest .
+```
+
+### Run with Docker
+To run the application locally using Docker, you'll need to provide environment variables, especially the `DATABASE_URL`. Ensure your PostgreSQL database is accessible from within the Docker container (e.g., by running `docker network create my-app-network` and attaching your DB container to it, or by using `host.docker.internal` for local DB access if on Docker Desktop).
+
+```bash
+# Example: Run the application, connecting to a local PostgreSQL instance
+# Make sure your database is running and accessible (e.g., on host.docker.internal:5432 or a Docker network)
+
+docker run -d \
+  --name node-websocket-app \
+  -p 3000:3000 \
+  -e PORT=3000 \
+  -e DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/websocket?schema=public" \
+  -e BASE_DIR="/app" \
+  -e SHELL_DEFAULT="bash" \
+  node-websocket:latest
+
+# To stop and remove the container:
+docker stop node-websocket-app
+docker rm node-websocket-app
+```
+
+## Kubernetes Deployment
+
+This project includes basic Kubernetes manifests for deploying the Node.js WebSocket server. The deployment setup ensures that Prisma migrations are run before the application pods start, and handles environment variables securely using Kubernetes Secrets.
+
+**Note on Scaling**: Currently, this application manages WebSocket sessions in-memory. For robust, highly available deployments, scaling beyond a single replica will require externalizing the session state (e.g., using Redis, PostgreSQL for session storage) to ensure clients can reconnect to any available pod without losing their session context.
+
+### 1. Create the Kubernetes Secret
+
+First, create a Kubernetes Secret to store sensitive environment variables like `DATABASE_URL`. The `node-websocket-secret.yaml` file provides a template. You **must** replace the placeholder `DATABASE_URL` value with your actual base64-encoded database connection string.
+
+To encode your `DATABASE_URL`:
+```bash
+echo -n "your_actual_postgresql_connection_string" | base64
+```
+
+Update `kubernetes/node-websocket-secret.yaml` with the encoded value, then apply it:
+
+```bash
+kubectl apply -f kubernetes/node-websocket-secret.yaml
+```
+
+### 2. Build and Push Docker Images
+
+Ensure you have built the Docker images as described in the [Build Docker Images](#build-docker-images) section. If deploying to a remote cluster, you must push these images to a container registry (e.g., Docker Hub, Google Container Registry, AWS ECR) that your Kubernetes cluster can access.
+
+```bash
+# Example for Docker Hub (replace 'your-dockerhub-username')
+docker tag node-websocket-builder:latest your-dockerhub-username/node-websocket-builder:latest
+docker push your-dockerhub-username/node-websocket-builder:latest
+
+docker tag node-websocket:latest your-dockerhub-username/node-websocket:latest
+docker push your-dockerhub-username/node-websocket:latest
+```
+
+Then, update the `image` fields in `kubernetes/node-websocket-deployment.yaml` to point to your registry-specific image names (e.g., `your-dockerhub-username/node-websocket-builder:latest`).
+
+### 3. Deploy the Application
+
+Apply the Deployment and Service manifests. The deployment uses an `initContainer` to run Prisma migrations before the main application starts, ensuring your database schema is up-to-date.
+
+```bash
+kubectl apply -f kubernetes/node-websocket-deployment.yaml
+kubectl apply -f kubernetes/node-websocket-service.yaml
+```
+
+### 4. Verify Deployment
+
+Check the status of your pods and service:
+
+```bash
+kubectl get pods -l app=node-websocket
+kubectl get svc node-websocket-service
+```
+
+If you're using a `ClusterIP` service (as in `node-websocket-service.yaml`), the service will only be accessible within the cluster. For external access, consider changing the service `type` to `LoadBalancer` (if your cloud provider supports it) or setting up an Ingress controller.
+
 ## API Endpoints
 
 ### WebSocket Namespace: `/terminal`
@@ -169,6 +269,11 @@ All real-time terminal interactions happen over the `/terminal` Socket.IO namesp
 ```
 node-websocket/
 ├── .env
+├── Dockerfile
+├── kubernetes/
+│   ├── node-websocket-deployment.yaml
+│   ├── node-websocket-secret.yaml
+│   └── node-websocket-service.yaml
 ├── package.json
 ├── prisma/
 │   └── schema.prisma
@@ -197,5 +302,5 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 ## 📧 Contact
 
 Eddie Villanueva - [evillan0315@gmail.com](mailto:evillan0315@gmail.com)
-[LinkedIn](https://www.linkedin.com/in/eddie-villalon/)  
-[GitHub](https://github.com/evillan0315)  
+[LinkedIn](https://www.linkedin.com/in/eddie-villalon/)
+[GitHub](https://github.com/evillan0315)
