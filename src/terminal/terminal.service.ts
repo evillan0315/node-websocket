@@ -26,16 +26,37 @@ export class TerminalService {
 
   constructor() {}
 
+  private async ensureUserExists(userId: string) {
+    let userRecord = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!userRecord) {
+      // Create a placeholder user if not found. This is crucial for FK constraints.
+      userRecord = await prisma.user.create({
+        data: {
+          id: userId,
+          username: `user_${userId.substring(0, 8)}`, // Placeholder username
+        },
+      });
+      this.logger.debug(`Created placeholder user for ID: ${userId}`);
+    }
+    return userRecord;
+  }
+
   async initializePtySession(
     sessionId: string,
     clientSocket: import('socket.io').Socket,
     cwd: string,
-    userId: string = '1', // This is user.sub from JWT
+    userId: string, // userId is now explicitly passed by index.ts
   ): Promise<string> {
     // If a session already exists, dispose of it first (e.g., on reconnect/re-init)
     if (this.sessions.has(sessionId)) {
       this.dispose(sessionId);
     }
+
+    // Ensure the user exists in the database before creating session/history
+    const userRecord = await this.ensureUserExists(userId);
 
     const shell = pty.spawn(this.defaultShell, [], {
       name: 'xterm-color',
@@ -44,22 +65,6 @@ export class TerminalService {
       cwd,
       env: process.env,
     });
-
-    // Ensure the user exists in the database
-    let userRecord = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!userRecord) {
-      // Assuming userId is the 'sub' from JWT. We create a placeholder username.
-      // In a real app, the username would ideally come from the authentication context.
-      userRecord = await prisma.user.create({
-        data: {
-          id: userId,
-          username: `user_${userId.substring(0, 8)}`, // Placeholder username
-        },
-      });
-    }
 
     // Create a new TerminalSession record in the database
     const dbSession = await prisma.terminalSession.create({
@@ -144,14 +149,17 @@ export class TerminalService {
 
   async saveCommandHistoryEntry(
     dbSessionId: string,
-    userId: string, // This is user.sub from JWT
+    userId: string, // userId is now explicitly passed by index.ts
     commandData: CreateCommandHistoryDto,
   ) {
     try {
+      // Ensure the user exists (though index.ts should ensure for session creation)
+      await this.ensureUserExists(userId);
+
       await prisma.commandHistory.create({
         data: {
           terminalSessionId: dbSessionId,
-          createdById: userId, // Link to the existing or newly created User ID
+          createdById: userId, // Link to the existing User ID
           command: commandData.command,
           workingDirectory: commandData.workingDirectory,
           status: commandData.status,
@@ -331,7 +339,8 @@ export class TerminalService {
       return 'yarn';
     }
     if (existsSync(pnpmLockPath)) {
-      return 'pnpm';} // Fixed missing closing brace
+      return 'pnpm';
+    } // Fixed missing closing brace
     if (existsSync(npmLockPath)) {
       return 'npm';
     }

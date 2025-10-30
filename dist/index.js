@@ -39,7 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config"); // Load environment variables
 const express_1 = __importDefault(require("express"));
 const http_1 = __importDefault(require("http"));
-const socket_io_1 = require("socket.io"); // Import Namespace type
+const socket_io_1 = require("socket.io"); // Removed AugmentedSocket
 const os = __importStar(require("os"));
 const process = __importStar(require("process"));
 const path_1 = require("path");
@@ -47,10 +47,7 @@ const fs_1 = require("fs");
 const ssh2_1 = require("ssh2");
 const config_1 = require("./config");
 const terminal_service_1 = require("./terminal/terminal.service");
-const auth_service_1 = require("./auth/auth.service");
-const auth_middleware_1 = require("./auth/auth.middleware");
-const auth_socket_1 = require("./auth/auth.socket");
-const user_role_enum_1 = require("./auth/enums/user-role.enum");
+// Removed AuthService, authMiddleware, rolesMiddleware, authSocketMiddleware, UserRole imports
 const logger_1 = require("./utils/logger");
 // --- Global Instances ---
 const app = (0, express_1.default)();
@@ -61,12 +58,13 @@ const io = new socket_io_1.Server(server, {
         methods: ['GET', 'POST'],
         credentials: true,
     },
-    // The 'namespace' option is not directly supported here. Use io.of('/namespace') instead.
 });
 const terminalNamespace = io.of('/terminal'); // Create a dedicated namespace
 const terminalService = new terminal_service_1.TerminalService();
-const authService = new auth_service_1.AuthService(); // Though not directly used here, good to have it for potential future uses or for clarity
+// Removed authService instance
 const logger = logger_1.consoleLogger;
+// Placeholder for anonymous user ID now that auth is removed
+const ANONYMOUS_USER_ID = 'anonymous_user_id';
 // --- State Maps ---
 const cwdMap = new Map();
 const sshClientMap = new Map();
@@ -74,8 +72,7 @@ const sshStreamMap = new Map(); // Using 'any' for SSH stream as it's not strong
 // --- Express Middleware ---
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
-// --- Socket.IO Middleware ---
-terminalNamespace.use(auth_socket_1.authSocketMiddleware); // Apply middleware to the specific namespace
+// Removed Socket.IO Middleware: terminalNamespace.use(authSocketMiddleware);
 // --- Helper to dispose SSH resources ---
 const disposeSsh = (clientId) => {
     const sshClient = sshClientMap.get(clientId);
@@ -88,15 +85,8 @@ const disposeSsh = (clientId) => {
 // --- Socket.IO Connection Handling ---
 terminalNamespace.on('connection', async (client) => {
     const clientId = client.id;
-    const userId = client.userId;
-    const roles = client.roles;
-    if (!userId || !roles) {
-        logger.error(`Client ${clientId} connected without userId or roles from auth middleware. Disconnecting.`);
-        client.emit('error', 'Authentication failed during connection.');
-        client.disconnect(true);
-        return;
-    }
-    logger.log(`Client connected: ${clientId} (User: ${userId}, Roles: ${roles.join(', ')})`);
+    // Removed userId and roles from connection parameters
+    logger.log(`Client connected: ${clientId} (Anonymous User: ${ANONYMOUS_USER_ID})`);
     let initialCwd;
     const requestedCwdFromQuery = client.handshake.query.initialCwd;
     if (requestedCwdFromQuery && typeof requestedCwdFromQuery === 'string') {
@@ -116,8 +106,9 @@ terminalNamespace.on('connection', async (client) => {
     }
     cwdMap.set(client.id, initialCwd);
     try {
-        const dbSessionId = await terminalService.initializePtySession(clientId, client, initialCwd, userId);
-        client.dbSessionId = dbSessionId; // Store db session ID on client
+        // Pass ANONYMOUS_USER_ID now that authentication is removed
+        const dbSessionId = await terminalService.initializePtySession(clientId, client, initialCwd, ANONYMOUS_USER_ID);
+        client.dbSessionId = dbSessionId; // Store db session ID on client (casted to any as it's a custom prop)
         client.emit('outputMessage', 'Welcome to the terminal!\n');
         client.emit('outputPath', cwdMap.get(clientId));
         client.emit('outputInfo', {
@@ -148,11 +139,7 @@ terminalNamespace.on('connection', async (client) => {
         logger.log(`Client disconnected: ${clientId}`);
     });
     client.on('set_cwd', async (payload) => {
-        if (!roles.includes(user_role_enum_1.UserRole.ADMIN)) {
-            client.emit('error', 'Permission denied: Requires ADMIN role.\n');
-            client.emit('prompt', { cwd: cwdMap.get(clientId) || process.cwd(), command: '' });
-            return;
-        }
+        // Removed roles check
         const requestedCwd = payload.cwd;
         let currentCwd = cwdMap.get(clientId) || process.cwd();
         if (requestedCwd && (0, fs_1.existsSync)(requestedCwd) && (0, fs_1.statSync)(requestedCwd).isDirectory()) {
@@ -172,14 +159,11 @@ terminalNamespace.on('connection', async (client) => {
         }
     });
     client.on('exec_terminal', async (payload) => {
-        if (!roles.includes(user_role_enum_1.UserRole.ADMIN)) {
-            client.emit('error', 'Permission denied: Requires ADMIN role.\n');
-            client.emit('prompt', { cwd: cwdMap.get(clientId) || process.cwd(), command: '' });
-            return;
-        }
+        // Removed roles check
         const dbSessionId = client.dbSessionId;
         let currentCwd = cwdMap.get(clientId) || process.cwd();
-        if (!userId || !dbSessionId) {
+        // Using ANONYMOUS_USER_ID
+        if (!ANONYMOUS_USER_ID || !dbSessionId) {
             logger.warn(`Missing userId or dbSessionId for client ${clientId}`);
             client.emit('error', 'Terminal session not properly initialized.');
             return;
@@ -211,7 +195,7 @@ terminalNamespace.on('connection', async (client) => {
             shellType: config_1.SHELL_DEFAULT,
             status: 'EXECUTED',
         };
-        terminalService.saveCommandHistoryEntry(dbSessionId, userId, commandHistoryEntry);
+        terminalService.saveCommandHistoryEntry(dbSessionId, ANONYMOUS_USER_ID, commandHistoryEntry); // Pass ANONYMOUS_USER_ID
         if (sshStreamMap.has(clientId)) {
             const stream = sshStreamMap.get(clientId);
             stream.write(`${command}\n`);
@@ -260,10 +244,7 @@ terminalNamespace.on('connection', async (client) => {
     });
     // Old 'exec' handler is removed in favor of 'exec_terminal' and 'input'
     client.on('ssh-connect', async (payload) => {
-        if (!roles.includes(user_role_enum_1.UserRole.ADMIN)) {
-            client.emit('error', 'Permission denied: Requires ADMIN role.\n');
-            return;
-        }
+        // Removed roles check
         if (sshClientMap.has(clientId)) {
             client.emit('error', 'SSH session already active');
             return;
@@ -331,13 +312,11 @@ terminalNamespace.on('connection', async (client) => {
         sshClientMap.set(clientId, sshClient);
     });
     client.on('input', async (data) => {
-        if (!roles.includes(user_role_enum_1.UserRole.ADMIN)) {
-            client.emit('error', 'Permission denied: Requires ADMIN role.\n');
-            return;
-        }
+        // Removed roles check
         const dbSessionId = client.dbSessionId;
         const currentCwd = cwdMap.get(clientId) || process.cwd();
-        if (!userId || !dbSessionId) {
+        // Using ANONYMOUS_USER_ID
+        if (!ANONYMOUS_USER_ID || !dbSessionId) {
             logger.warn(`Missing userId or dbSessionId for client ${clientId}`);
             client.emit('error', 'Terminal session not properly initialized.');
             return;
@@ -357,7 +336,7 @@ terminalNamespace.on('connection', async (client) => {
             shellType: config_1.SHELL_DEFAULT,
             status: 'EXECUTED',
         };
-        terminalService.saveCommandHistoryEntry(dbSessionId, userId, commandHistoryEntry);
+        terminalService.saveCommandHistoryEntry(dbSessionId, ANONYMOUS_USER_ID, commandHistoryEntry); // Pass ANONYMOUS_USER_ID
         if (sshStreamMap.has(clientId)) {
             sshStreamMap.get(clientId).write(data.input);
             return;
@@ -365,10 +344,7 @@ terminalNamespace.on('connection', async (client) => {
         terminalService.write(clientId, data.input);
     });
     client.on('resize', (data) => {
-        if (!roles.includes(user_role_enum_1.UserRole.ADMIN)) {
-            logger.warn(`Client ${clientId} attempted resize without ADMIN role.`);
-            return;
-        }
+        // Removed roles check
         terminalService.resize(clientId, data.cols, data.rows);
     });
     client.on('close', () => {
@@ -378,7 +354,8 @@ terminalNamespace.on('connection', async (client) => {
     });
 });
 // --- Express Routes ---
-app.post('/api/terminal/ssh/run', auth_middleware_1.authMiddleware, (0, auth_middleware_1.rolesMiddleware)([user_role_enum_1.UserRole.ADMIN]), async (req, res) => {
+// Removed authMiddleware and rolesMiddleware from all routes
+app.post('/api/terminal/ssh/run', async (req, res) => {
     const body = req.body;
     try {
         if (body.privateKeyPath) {
@@ -402,7 +379,7 @@ app.post('/api/terminal/ssh/run', auth_middleware_1.authMiddleware, (0, auth_mid
         });
     }
 });
-app.post('/api/terminal/run', auth_middleware_1.authMiddleware, (0, auth_middleware_1.rolesMiddleware)([user_role_enum_1.UserRole.ADMIN]), async (req, res) => {
+app.post('/api/terminal/run', async (req, res) => {
     const body = req.body;
     const { command, cwd } = body;
     try {
@@ -417,7 +394,7 @@ app.post('/api/terminal/run', auth_middleware_1.authMiddleware, (0, auth_middlew
         });
     }
 });
-app.post('/api/terminal/package-scripts', auth_middleware_1.authMiddleware, (0, auth_middleware_1.rolesMiddleware)([user_role_enum_1.UserRole.ADMIN]), async (req, res) => {
+app.post('/api/terminal/package-scripts', async (req, res) => {
     const body = req.body;
     try {
         const result = await terminalService.getPackageScripts(body.projectRoot);

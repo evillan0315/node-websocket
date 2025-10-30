@@ -1,7 +1,7 @@
 import 'dotenv/config'; // Load environment variables
 import express from 'express';
 import http from 'http';
-import { Server, Namespace } from 'socket.io'; // Import Namespace type
+import { Server, Socket, Namespace } from 'socket.io'; // Removed AugmentedSocket
 import * as os from 'os';
 import * as process from 'process';
 import { resolve } from 'path';
@@ -10,10 +10,7 @@ import { Client as SSHClient } from 'ssh2';
 
 import { PORT, BASE_DIR, SHELL_DEFAULT } from './config';
 import { TerminalService } from './terminal/terminal.service';
-import { AuthService } from './auth/auth.service';
-import { authMiddleware, rolesMiddleware } from './auth/auth.middleware';
-import { authSocketMiddleware, AugmentedSocket } from './auth/auth.socket';
-import { UserRole } from './auth/enums/user-role.enum';
+// Removed AuthService, authMiddleware, rolesMiddleware, authSocketMiddleware, UserRole imports
 import { consoleLogger } from './utils/logger';
 import {
   SshCommandDto,
@@ -32,14 +29,16 @@ const io = new Server(server, {
     methods: ['GET', 'POST'],
     credentials: true,
   },
-  // The 'namespace' option is not directly supported here. Use io.of('/namespace') instead.
 });
 
 const terminalNamespace: Namespace = io.of('/terminal'); // Create a dedicated namespace
 
 const terminalService = new TerminalService();
-const authService = new AuthService(); // Though not directly used here, good to have it for potential future uses or for clarity
+// Removed authService instance
 const logger = consoleLogger;
+
+// Placeholder for anonymous user ID now that auth is removed
+const ANONYMOUS_USER_ID = 'anonymous_user_id';
 
 // --- State Maps ---
 const cwdMap = new Map<string, string>();
@@ -50,8 +49,7 @@ const sshStreamMap = new Map<string, any>(); // Using 'any' for SSH stream as it
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// --- Socket.IO Middleware ---
-terminalNamespace.use(authSocketMiddleware); // Apply middleware to the specific namespace
+// Removed Socket.IO Middleware: terminalNamespace.use(authSocketMiddleware);
 
 // --- Helper to dispose SSH resources ---
 const disposeSsh = (clientId: string) => {
@@ -64,19 +62,11 @@ const disposeSsh = (clientId: string) => {
 };
 
 // --- Socket.IO Connection Handling ---
-terminalNamespace.on('connection', async (client: AugmentedSocket) => { // Listen for connections on the specific namespace
+terminalNamespace.on('connection', async (client: Socket) => { // Listen for connections on the specific namespace, client is now a regular Socket
   const clientId = client.id;
-  const userId = client.userId;
-  const roles = client.roles;
+  // Removed userId and roles from connection parameters
 
-  if (!userId || !roles) {
-    logger.error(`Client ${clientId} connected without userId or roles from auth middleware. Disconnecting.`);
-    client.emit('error', 'Authentication failed during connection.');
-    //client.disconnect(true);
-    //return;
-  }
-
-  logger.log(`Client connected: ${clientId} (User: ${userId}, Roles: ${roles.join(', ')})`);
+  logger.log(`Client connected: ${clientId} (Anonymous User: ${ANONYMOUS_USER_ID})`);
 
   let initialCwd: string;
   const requestedCwdFromQuery = client.handshake.query.initialCwd as string | undefined;
@@ -98,13 +88,14 @@ terminalNamespace.on('connection', async (client: AugmentedSocket) => { // Liste
   cwdMap.set(client.id, initialCwd);
 
   try {
+    // Pass ANONYMOUS_USER_ID now that authentication is removed
     const dbSessionId = await terminalService.initializePtySession(
       clientId,
       client,
       initialCwd,
-      userId,
+      ANONYMOUS_USER_ID,
     );
-    client.dbSessionId = dbSessionId; // Store db session ID on client
+    (client as any).dbSessionId = dbSessionId; // Store db session ID on client (casted to any as it's a custom prop)
 
     client.emit('outputMessage', 'Welcome to the terminal!\n');
     client.emit('outputPath', cwdMap.get(clientId));
@@ -127,7 +118,7 @@ terminalNamespace.on('connection', async (client: AugmentedSocket) => { // Liste
 
   client.on('disconnect', () => {
     const clientId = client.id;
-    const dbSessionId = client.dbSessionId;
+    const dbSessionId = (client as any).dbSessionId;
     if (dbSessionId) {
       terminalService.dispose(clientId);
     }
@@ -137,11 +128,7 @@ terminalNamespace.on('connection', async (client: AugmentedSocket) => { // Liste
   });
 
   client.on('set_cwd', async (payload: { cwd: string }) => {
-    if (!roles.includes(UserRole.ADMIN)) {
-      client.emit('error', 'Permission denied: Requires ADMIN role.\n');
-      client.emit('prompt', { cwd: cwdMap.get(clientId) || process.cwd(), command: '' });
-      return;
-    }
+    // Removed roles check
     const requestedCwd = payload.cwd;
     let currentCwd = cwdMap.get(clientId) || process.cwd();
 
@@ -162,15 +149,12 @@ terminalNamespace.on('connection', async (client: AugmentedSocket) => { // Liste
   });
 
   client.on('exec_terminal', async (payload: ExecDto) => {
-    if (!roles.includes(UserRole.ADMIN)) {
-      client.emit('error', 'Permission denied: Requires ADMIN role.\n');
-      client.emit('prompt', { cwd: cwdMap.get(clientId) || process.cwd(), command: '' });
-      return;
-    }
-    const dbSessionId = client.dbSessionId;
+    // Removed roles check
+    const dbSessionId = (client as any).dbSessionId;
     let currentCwd = cwdMap.get(clientId) || process.cwd();
 
-    if (!userId || !dbSessionId) {
+    // Using ANONYMOUS_USER_ID
+    if (!ANONYMOUS_USER_ID || !dbSessionId) {
       logger.warn(`Missing userId or dbSessionId for client ${clientId}`);
       client.emit('error', 'Terminal session not properly initialized.');
       return;
@@ -206,7 +190,7 @@ terminalNamespace.on('connection', async (client: AugmentedSocket) => { // Liste
       shellType: SHELL_DEFAULT,
       status: 'EXECUTED',
     };
-    terminalService.saveCommandHistoryEntry(dbSessionId, userId, commandHistoryEntry);
+    terminalService.saveCommandHistoryEntry(dbSessionId, ANONYMOUS_USER_ID, commandHistoryEntry); // Pass ANONYMOUS_USER_ID
 
     if (sshStreamMap.has(clientId)) {
       const stream = sshStreamMap.get(clientId);
@@ -266,10 +250,7 @@ terminalNamespace.on('connection', async (client: AugmentedSocket) => { // Liste
   // Old 'exec' handler is removed in favor of 'exec_terminal' and 'input'
 
   client.on('ssh-connect', async (payload: SshCommandDto) => {
-    if (!roles.includes(UserRole.ADMIN)) {
-      client.emit('error', 'Permission denied: Requires ADMIN role.\n');
-      return;
-    }
+    // Removed roles check
 
     if (sshClientMap.has(clientId)) {
       client.emit('error', 'SSH session already active');
@@ -342,14 +323,12 @@ terminalNamespace.on('connection', async (client: AugmentedSocket) => { // Liste
   });
 
   client.on('input', async (data: { input: string }) => {
-    if (!roles.includes(UserRole.ADMIN)) {
-      client.emit('error', 'Permission denied: Requires ADMIN role.\n');
-      return;
-    }
-    const dbSessionId = client.dbSessionId;
+    // Removed roles check
+    const dbSessionId = (client as any).dbSessionId;
     const currentCwd = cwdMap.get(clientId) || process.cwd();
 
-    if (!userId || !dbSessionId) {
+    // Using ANONYMOUS_USER_ID
+    if (!ANONYMOUS_USER_ID || !dbSessionId) {
       logger.warn(`Missing userId or dbSessionId for client ${clientId}`);
       client.emit('error', 'Terminal session not properly initialized.');
       return;
@@ -372,7 +351,7 @@ terminalNamespace.on('connection', async (client: AugmentedSocket) => { // Liste
       status: 'EXECUTED',
     };
 
-    terminalService.saveCommandHistoryEntry(dbSessionId, userId, commandHistoryEntry);
+    terminalService.saveCommandHistoryEntry(dbSessionId, ANONYMOUS_USER_ID, commandHistoryEntry); // Pass ANONYMOUS_USER_ID
 
     if (sshStreamMap.has(clientId)) {
       sshStreamMap.get(clientId).write(data.input);
@@ -383,10 +362,7 @@ terminalNamespace.on('connection', async (client: AugmentedSocket) => { // Liste
   });
 
   client.on('resize', (data: { cols: number; rows: number }) => {
-    if (!roles.includes(UserRole.ADMIN)) {
-      logger.warn(`Client ${clientId} attempted resize without ADMIN role.`);
-      return;
-    }
+    // Removed roles check
     terminalService.resize(clientId, data.cols, data.rows);
   });
 
@@ -398,7 +374,8 @@ terminalNamespace.on('connection', async (client: AugmentedSocket) => { // Liste
 });
 
 // --- Express Routes ---
-app.post('/api/terminal/ssh/run', authMiddleware, rolesMiddleware([UserRole.ADMIN]), async (req, res) => {
+// Removed authMiddleware and rolesMiddleware from all routes
+app.post('/api/terminal/ssh/run', async (req, res) => {
   const body: SshCommandDto = req.body;
 
   try {
@@ -424,7 +401,7 @@ app.post('/api/terminal/ssh/run', authMiddleware, rolesMiddleware([UserRole.ADMI
   }
 });
 
-app.post('/api/terminal/run', authMiddleware, rolesMiddleware([UserRole.ADMIN]), async (req, res) => {
+app.post('/api/terminal/run', async (req, res) => {
   const body: TerminalCommandDto = req.body;
   const { command, cwd } = body;
 
@@ -440,7 +417,7 @@ app.post('/api/terminal/run', authMiddleware, rolesMiddleware([UserRole.ADMIN]),
   }
 });
 
-app.post('/api/terminal/package-scripts', authMiddleware, rolesMiddleware([UserRole.ADMIN]), async (req, res) => {
+app.post('/api/terminal/package-scripts', async (req, res) => {
   const body: GetPackageScriptsDto = req.body;
 
   try {
