@@ -96,7 +96,7 @@ terminalNamespace.on('connection', async (client) => {
             logger.debug(`Client ${clientId} connected with requested CWD: ${initialCwd}`);
         }
         else {
-            logger.warn(`Client ${clientId} requested invalid CWD: "${requestedCwdFromQuery}". Falling back to default.`);
+            logger.warn(`Client ${clientId} requested invalid CWD: \"${requestedCwdFromQuery}\". Falling back to default.`);
             initialCwd = (0, fs_1.existsSync)(config_1.BASE_DIR) && (0, fs_1.statSync)(config_1.BASE_DIR).isDirectory() ? config_1.BASE_DIR : os.homedir();
         }
     }
