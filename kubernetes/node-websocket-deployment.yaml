@@ -18,11 +18,12 @@ spec:
       # It uses the 'builder' image (which includes Prisma CLI and the schema).
       initContainers:
         - name: prisma-migrate
-          image: node-websocket-builder:latest # Ensure this image is built and pushed
+          image: node-websocket-builder:latest
+          imagePullPolicy: Never
           command: ["/bin/sh", "-c"]
           args:
             - "echo 'Applying Prisma migrations...';"
-            - "npx prisma migrate deploy --preview-feature --schema=/app/prisma/schema.prisma;"
+            - "npx prisma migrate deploy --schema=/app/prisma/schema.prisma;"
             - "echo 'Prisma migrations applied successfully!';"
           envFrom:
             - secretRef:
