@@ -2,19 +2,19 @@
   apps: [
     {
       name: "node-websocket",
-      script: "node dist/index.js",
+      script: "dist/index.js",
       instances: 1,
       exec_mode: "fork",
       watch: false,
       autorestart: true,
       max_memory_restart: "1G",
       env: {
-        NODE_ENV: "development",
-        PORT: 3000
-      },
-      env_production: {
+        // PM2-specific environment variables for static serving
+        //PM2_SERVE_PATH: "./dist/index.js", // ⬅️ The folder to serve (your Vite output)
+        PORT: 3000,    // ⬅️ The port your app will run on
+        //PM2_SERVE_SPA: "true",   // ⬅️ CRITICAL for SPAs (redirects 404s to index.html)
+        // Optional: Can add other standard env variables here
         NODE_ENV: "production",
-        PORT: 3000
       },
       out_file: "./logs/combined.log",
       error_file: "./logs/error.log",
